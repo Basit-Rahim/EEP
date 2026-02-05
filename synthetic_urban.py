@@ -151,12 +151,14 @@ def generate_synthetic(
     x, ae, y,
     n_total=200,
     n_income_tail=40,
-    n_route_unsafe=40,
+    n_route_unsafe=20,
     n_distance_tail=40,
     start_id=9001,
     use_gmm=True,
     gmm_components=2,
     seed=42,
+    route_unsafe_keep_prob=0.3,
+    route_unsafe_penalty=0.7,
 ):
     rng = np.random.RandomState(seed)
 
@@ -256,7 +258,8 @@ def generate_synthetic(
             prob *= 0.5
 
         if "route_unsafe" in cats:
-            prob *= 0.5
+            if rng.rand() >= route_unsafe_keep_prob:
+                prob *= route_unsafe_penalty
 
         if "distance_tail" in cats:
             if base_row["min_distance"] >= high_dist_thr or base_row["min_time"] >= high_time_thr:
@@ -328,11 +331,13 @@ def parse_args():
 
     p.add_argument("--n-total", type=int, default=200)
     p.add_argument("--n-income-tail", type=int, default=40)
-    p.add_argument("--n-route-unsafe", type=int, default=40)
+    p.add_argument("--n-route-unsafe", type=int, default=20)
     p.add_argument("--n-distance-tail", type=int, default=40)
 
     p.add_argument("--start-id", type=int, default=9001)
     p.add_argument("--seed", type=int, default=42)
+    p.add_argument("--route-unsafe-keep-prob", type=float, default=0.3)
+    p.add_argument("--route-unsafe-penalty", type=float, default=0.7)
 
     p.add_argument("--no-color", action="store_true")
 
@@ -370,7 +375,9 @@ def main():
         start_id=args.start_id,
         use_gmm=args.use_gmm,
         gmm_components=args.gmm_components,
-        seed=args.seed
+        seed=args.seed,
+        route_unsafe_keep_prob=args.route_unsafe_keep_prob,
+        route_unsafe_penalty=args.route_unsafe_penalty
     )
 
     print(color(f"Generated {len(syn_x)} synthetic households.", CYAN, color_on))
@@ -445,4 +452,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

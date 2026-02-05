@@ -44,6 +44,10 @@ Outputs (written to `--output_dir`):
 - `inference_phase2.py` auto‑detects weight type: `.joblib/.pkl` → stacked ensemble with saved normalization; `.pt` → Torch `Phase2Net`.
 - Ensure all weight files exist for the chosen preset; otherwise the pipeline will fail at the missing stage.
 
+## Route Safety Configuration
+ The source data contains only `route_safe = 1`, adding synthetic `route_safe = 0` examples can create an artificial, overly strong signal and collapse predictions. Instead, route safety is applied post‑hoc at inference:
+- If `route_safe == 0`, the final probability is multiplied by **0.8**.
+
 ## Preprocessing
 `preprocess.py` builds cleaned datasets from raw surveys:
 ```

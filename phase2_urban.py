@@ -157,6 +157,8 @@ def main(args):
 
     # Load Data
     X_df = pd.read_csv(args.xfile)
+    if "route_safe" in X_df.columns:
+        X_df = X_df.drop(columns=["route_safe"])
     Y_df = pd.read_csv(args.yfile)
 
     df = X_df.merge(Y_df, on="hh_id")

@@ -51,6 +51,8 @@ def load_model(weights_path: str, input_dim: int):
 def run_inference(xfile, latentfile, weights, output):
     X = pd.read_csv(xfile)
     Z = pd.read_csv(latentfile)
+    route_safe = X["route_safe"].copy() if "route_safe" in X.columns else None
+    X = X.drop(columns=["route_safe"], errors="ignore")
 
     df = pd.concat([X, Z[["z1","z2","z3"]]], axis=1)
     hh_ids = df["hh_id"]
@@ -62,6 +64,12 @@ def run_inference(xfile, latentfile, weights, output):
 
     if model_type == "sklearn_dict":
         feature_names = model["feature_names"]
+        if "route_safe" in feature_names and "route_safe" not in feature_df.columns:
+            if route_safe is None:
+                raise ValueError("route_safe is required by the phase 2 model but not found in input.")
+            feature_df = feature_df.assign(
+                route_safe=pd.to_numeric(route_safe, errors="coerce").fillna(1).astype(np.float32)
+            )
         missing = [c for c in feature_names if c not in feature_df.columns]
         if missing:
             raise ValueError(f"Missing required features for phase 2 model: {missing}")
@@ -78,6 +86,10 @@ def run_inference(xfile, latentfile, weights, output):
         data = feature_df.to_numpy(dtype=np.float32)
         with torch.no_grad():
             pred = model(torch.tensor(data)).numpy().flatten()
+
+    if route_safe is not None:
+        rs = pd.to_numeric(route_safe, errors="coerce").fillna(1).astype(int).to_numpy()
+        pred = pred * np.where(rs == 0, 0.8, 1.0)
 
     out = pd.DataFrame({"hh_id": hh_ids, "prob": pred})
     out.to_csv(output, index=False)

@@ -302,6 +302,10 @@ def run_phase2(features_df: pd.DataFrame, z_df: pd.DataFrame, preset: str) -> fl
     feature_df = merged.drop(columns=["hh_id"]).astype(np.float32)
     pred, _ = _phase2_predict(feature_df, preset)
     prob = float(pred.flatten()[0])
+    if "route_safe" in features_df.columns:
+        rs = pd.to_numeric(features_df["route_safe"], errors="coerce").fillna(1).astype(int)
+        if int(rs.iloc[0]) == 0:
+            prob *= 0.8
     return prob
 
 def run_full_inference(inputs: Dict[str, float], preset: str) -> float:
@@ -322,6 +326,10 @@ def run_full_inference_debug(inputs: Dict[str, float], preset: str):
     feature_df = merged.drop(columns=["hh_id"]).astype(np.float32)
     pred, meta = _phase2_predict(feature_df, preset)
     raw_prob = float(pred.flatten()[0])
+    if "route_safe" in features_df.columns:
+        rs = pd.to_numeric(features_df["route_safe"], errors="coerce").fillna(1).astype(int)
+        if int(rs.iloc[0]) == 0:
+            raw_prob *= 0.8
     clipped = float(np.clip(raw_prob, 0.0, 1.0))
     return features_df, p1_preds, z_df, raw_prob, clipped, meta
 
@@ -336,7 +344,7 @@ class HistoryItem:
     features: Dict[str, float]
 
 def child_defaults() -> Dict:
-    return {"gender": 1, "travel_mode": 0, "route_safe": 1, "distance": 1.0, "time": 10.0, "facilities": []}
+    return {"gender": 1, "travel_mode": 0, "route_safe": 1, "distance": 0.5, "time": 2.0, "facilities": []}
 
 def compute_school_facility_score(children: List[Dict]) -> float:
     if not children: return 0.0
@@ -370,8 +378,8 @@ def compute_school_facility_score(children: List[Dict]) -> float:
 
 def aggregate_children(children: List[Dict]) -> Dict:
     if not children:
-        return {"travel_mode": 0, "route_safe": 1, "min_distance": 0.0, "max_distance": 0.0, 
-                "min_time": 0.0, "max_time": 0.0, "school_facilities": 0.0}
+        return {"travel_mode": 0, "route_safe": 1, "min_distance": 0.5, "max_distance": 0.5,
+                "min_time": 2.0, "max_time": 2.0, "school_facilities": 0.0}
     
     t_modes = [c.get("travel_mode", 0) for c in children]
     travel_mode = Counter(t_modes).most_common(1)[0][0] if t_modes else 0
@@ -481,9 +489,9 @@ def main():
                 r_str = st.selectbox("Route Safe?", ["No", "Yes"], index=r_idx, key=f"r{idx}")
                 route_val = YES_NO_UI[r_str]
             with c4:
-                dist_val = st.number_input("Distance to school (km)", 0.0, 200.0, float(c.get("distance", 1.0)), step=0.5, key=f"d{idx}")
+                dist_val = st.number_input("Distance to school (km)", 0.0, 200.0, float(c.get("distance", 0.5)), step=0.5, key=f"d{idx}")
             with c5:
-                time_val = st.number_input("Travel time (minutes)", 0.0, 240.0, float(c.get("time", 10.0)), step=1.0, key=f"tm{idx}")
+                time_val = st.number_input("Travel time (minutes)", 0.0, 240.0, float(c.get("time", 2.0)), step=1.0, key=f"tm{idx}")
             
             # FIXED: Added Facilities Multiselect
             # Convert any stored keys back to labels for display; unknowns are dropped
