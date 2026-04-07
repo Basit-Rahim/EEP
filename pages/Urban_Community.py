@@ -1,6 +1,6 @@
 """
-Rural Community — ABM Population Simulation
-Main entry point. Run with: streamlit run streamlit_app.py
+Urban Community — ABM Population Simulation
+Accessible from the Streamlit sidebar navigation.
 """
 import numpy as np
 import pandas as pd
@@ -26,12 +26,12 @@ from population import (
     run_batch_inference,
 )
 
-PRESET = "rural"
+PRESET = "urban"
 
 # -----------------------------------------------------------------------
 # PAGE CONFIG
 # -----------------------------------------------------------------------
-st.set_page_config(page_title="ABM — Rural Community", layout="wide")
+st.set_page_config(page_title="ABM — Urban Community", layout="wide")
 st.markdown(APP_CSS, unsafe_allow_html=True)
 
 
@@ -39,14 +39,14 @@ st.markdown(APP_CSS, unsafe_allow_html=True)
 # SESSION STATE
 # -----------------------------------------------------------------------
 def _init_state():
-    if "agents_df" not in st.session_state:
-        st.session_state.agents_df = None
-    if "school" not in st.session_state:
-        st.session_state.school = generate_school(PRESET)
-    if "selected_agent_id" not in st.session_state:
-        st.session_state.selected_agent_id = None
-    if "inference_done" not in st.session_state:
-        st.session_state.inference_done = False
+    if "u_agents_df" not in st.session_state:
+        st.session_state.u_agents_df = None
+    if "u_school" not in st.session_state:
+        st.session_state.u_school = generate_school(PRESET)
+    if "u_selected_agent_id" not in st.session_state:
+        st.session_state.u_selected_agent_id = None
+    if "u_inference_done" not in st.session_state:
+        st.session_state.u_inference_done = False
 
 
 # -----------------------------------------------------------------------
@@ -55,11 +55,10 @@ def _init_state():
 def build_map(agents_df: pd.DataFrame, school: dict, selected_id) -> go.Figure:
     fig = go.Figure()
 
-    # School marker
     fig.add_trace(go.Scatter(
         x=[school["x"]], y=[school["y"]],
         mode="markers+text",
-        marker=dict(symbol="square", size=22, color="#1d4ed8", line=dict(color="#ffffff", width=2)),
+        marker=dict(symbol="square", size=22, color="#d97706", line=dict(color="#ffffff", width=2)),
         text=[school["name"]],
         textposition="top center",
         textfont=dict(color="#ffffff", size=11),
@@ -73,16 +72,6 @@ def build_map(agents_df: pd.DataFrame, school: dict, selected_id) -> go.Figure:
 
     has_probs = agents_df["enrollment_prob"].notna().any()
 
-    if has_probs:
-        color_vals = agents_df["enrollment_prob"].fillna(0.5).values
-        colorscale = "RdYlGn"
-        marker_color = color_vals
-        showscale = True
-    else:
-        marker_color = "#94a3b8"
-        colorscale = None
-        showscale = False
-
     def hover_text(row):
         prob_str = f"{row.enrollment_prob:.0%}" if pd.notna(row.enrollment_prob) else "—"
         return (
@@ -93,23 +82,26 @@ def build_map(agents_df: pd.DataFrame, school: dict, selected_id) -> go.Figure:
             f"Enrollment Prob: {prob_str}"
         )
 
-    hover_texts = agents_df.apply(hover_text, axis=1).tolist()
-
     # Non-selected agents
     non_selected = agents_df[agents_df["hh_id"] != selected_id] if selected_id is not None else agents_df
     if len(non_selected) > 0:
         if has_probs:
             mc = non_selected["enrollment_prob"].fillna(0.5).values
+            cscale = "RdYlGn"
+            showscale = True
         else:
-            mc = "#94a3b8"
+            mc = "#fbbf24"
+            cscale = None
+            showscale = False
 
+        hover_texts = non_selected.apply(hover_text, axis=1).tolist()
         fig.add_trace(go.Scatter(
             x=non_selected["x"].values,
             y=non_selected["y"].values,
             mode="markers",
             marker=dict(
                 color=mc,
-                colorscale=colorscale if has_probs else None,
+                colorscale=cscale if has_probs else None,
                 cmin=0.0, cmax=1.0,
                 size=8,
                 opacity=0.85,
@@ -122,12 +114,12 @@ def build_map(agents_df: pd.DataFrame, school: dict, selected_id) -> go.Figure:
                 ) if showscale else None,
                 showscale=showscale,
             ),
-            text=[hover_texts[i] for i in non_selected.index],
+            text=hover_texts,
             hovertemplate="%{text}<extra></extra>",
             name="Households",
         ))
 
-    # Selected agent (highlighted)
+    # Selected agent
     if selected_id is not None:
         sel = agents_df[agents_df["hh_id"] == selected_id]
         if len(sel) > 0:
@@ -135,12 +127,8 @@ def build_map(agents_df: pd.DataFrame, school: dict, selected_id) -> go.Figure:
                 x=sel["x"].values,
                 y=sel["y"].values,
                 mode="markers",
-                marker=dict(
-                    color="#f59e0b",
-                    size=16,
-                    symbol="circle",
-                    line=dict(color="#ffffff", width=3),
-                ),
+                marker=dict(color="#f59e0b", size=16, symbol="circle",
+                            line=dict(color="#ffffff", width=3)),
                 hovertemplate=f"<b>SELECTED: Agent #{int(selected_id)}</b><extra></extra>",
                 name=f"Selected #{int(selected_id)}",
                 showlegend=True,
@@ -157,7 +145,7 @@ def _map_layout():
         paper_bgcolor="#1e293b",
         plot_bgcolor="#0f172a",
         xaxis=dict(
-            range=[0, 50], showgrid=True, gridcolor="#334155",
+            range=[50, 100], showgrid=True, gridcolor="#334155",
             zeroline=False, title="",
             tickfont=dict(color="#94a3b8"),
         ),
@@ -180,7 +168,7 @@ def _map_layout():
 # AGENT EDIT PANEL
 # -----------------------------------------------------------------------
 def render_agent_panel(agents_df: pd.DataFrame):
-    sel_id = st.session_state.selected_agent_id
+    sel_id = st.session_state.u_selected_agent_id
     agent_row = agents_df[agents_df["hh_id"] == sel_id]
     if len(agent_row) == 0:
         return
@@ -207,12 +195,12 @@ def render_agent_panel(agents_df: pd.DataFrame):
             "Monthly Income (PKR)",
             float(stats["raw_min"]), float(stats["raw_max"]),
             float(agent.monthly_income_raw), step=500.0,
-            key="panel_income",
+            key="u_panel_income",
         )
     with c2:
         route_label = "Safe" if agent.route_safe == 1 else "Unsafe"
         route_str = st.selectbox("Route Safety", ["Safe", "Unsafe"],
-                                 index=0 if route_label == "Safe" else 1, key="panel_route")
+                                 index=0 if route_label == "Safe" else 1, key="u_panel_route")
         route_val = 1 if route_str == "Safe" else 0
 
     with c3:
@@ -220,32 +208,32 @@ def render_agent_panel(agents_df: pd.DataFrame):
         if dist_cat not in DISTANCE_CAT_LIST:
             dist_cat = DISTANCE_CAT_LIST[0]
         dist_str = st.selectbox("Distance to School", DISTANCE_CAT_LIST,
-                                index=DISTANCE_CAT_LIST.index(dist_cat), key="panel_dist")
+                                index=DISTANCE_CAT_LIST.index(dist_cat), key="u_panel_dist")
 
     with c4:
         t_label = TRAVEL_MODE_MAP.get(int(agent.travel_mode), "On foot")
         travel_str = st.selectbox("Travel Mode", list(TRAVEL_MODE_UI.keys()),
                                   index=list(TRAVEL_MODE_UI.keys()).index(t_label)
                                   if t_label in TRAVEL_MODE_UI else 0,
-                                  key="panel_travel")
+                                  key="u_panel_travel")
         travel_val = TRAVEL_MODE_UI[travel_str]
 
     c5, c6, c7 = st.columns(3)
     with c5:
         rw_str = st.radio("Head can Read/Write?", ["Yes", "No"],
                           index=0 if int(agent.read_write) == 1 else 1,
-                          horizontal=True, key="panel_rw")
+                          horizontal=True, key="u_panel_rw")
         rw_val = YES_NO_UI[rw_str]
     with c6:
         math_str = st.radio("Head can Solve Math?", ["Yes", "No"],
                             index=0 if int(agent.solve_math) == 1 else 1,
-                            horizontal=True, key="panel_math")
+                            horizontal=True, key="u_panel_math")
         math_val = YES_NO_UI[math_str]
     with c7:
         fac_val = st.slider("School Facilities (0–5)", 0.0, 5.0,
-                            float(agent.school_facilities), step=0.5, key="panel_fac")
+                            float(agent.school_facilities), step=0.5, key="u_panel_fac")
 
-    if st.button("Re-run Inference for This Agent", key="panel_run"):
+    if st.button("Re-run Inference for This Agent", key="u_panel_run"):
         dist_vals = DISTANCE_CATEGORIES[dist_str]
         income_norm = (income_raw - stats["mean"]) / stats["std"]
 
@@ -265,19 +253,19 @@ def render_agent_panel(agents_df: pd.DataFrame):
         new_prob = run_full_inference(model_inputs, PRESET)
 
         idx = agents_df.index[agents_df["hh_id"] == sel_id][0]
-        st.session_state.agents_df.at[idx, "enrollment_prob"] = new_prob
-        st.session_state.agents_df.at[idx, "monthly_income_raw"] = income_raw
-        st.session_state.agents_df.at[idx, "monthly_income_norm"] = income_norm
-        st.session_state.agents_df.at[idx, "route_safe"] = route_val
-        st.session_state.agents_df.at[idx, "travel_mode"] = travel_val
-        st.session_state.agents_df.at[idx, "read_write"] = rw_val
-        st.session_state.agents_df.at[idx, "solve_math"] = math_val
-        st.session_state.agents_df.at[idx, "school_facilities"] = fac_val
-        st.session_state.agents_df.at[idx, "distance_cat"] = dist_str
-        st.session_state.agents_df.at[idx, "min_distance"] = dist_vals["min_distance"]
-        st.session_state.agents_df.at[idx, "max_distance"] = dist_vals["max_distance"]
-        st.session_state.agents_df.at[idx, "min_time"] = dist_vals["min_time"]
-        st.session_state.agents_df.at[idx, "max_time"] = dist_vals["max_time"]
+        st.session_state.u_agents_df.at[idx, "enrollment_prob"] = new_prob
+        st.session_state.u_agents_df.at[idx, "monthly_income_raw"] = income_raw
+        st.session_state.u_agents_df.at[idx, "monthly_income_norm"] = income_norm
+        st.session_state.u_agents_df.at[idx, "route_safe"] = route_val
+        st.session_state.u_agents_df.at[idx, "travel_mode"] = travel_val
+        st.session_state.u_agents_df.at[idx, "read_write"] = rw_val
+        st.session_state.u_agents_df.at[idx, "solve_math"] = math_val
+        st.session_state.u_agents_df.at[idx, "school_facilities"] = fac_val
+        st.session_state.u_agents_df.at[idx, "distance_cat"] = dist_str
+        st.session_state.u_agents_df.at[idx, "min_distance"] = dist_vals["min_distance"]
+        st.session_state.u_agents_df.at[idx, "max_distance"] = dist_vals["max_distance"]
+        st.session_state.u_agents_df.at[idx, "min_time"] = dist_vals["min_time"]
+        st.session_state.u_agents_df.at[idx, "max_time"] = dist_vals["max_time"]
         st.rerun()
 
 
@@ -310,7 +298,7 @@ def render_summary(agents_df: pd.DataFrame):
         fig_hist = go.Figure(go.Histogram(
             x=valid["enrollment_prob"],
             nbinsx=20,
-            marker_color="#3b82f6",
+            marker_color="#d97706",
             opacity=0.85,
         ))
         fig_hist.update_layout(
@@ -358,56 +346,53 @@ def main():
     _init_state()
 
     st.markdown(
-        '<div class="title-pill">RURAL COMMUNITY — Agent Based Modeling for Out-of-School Children</div>',
+        '<div class="title-pill">URBAN COMMUNITY — Agent Based Modeling for Out-of-School Children</div>',
         unsafe_allow_html=True,
     )
 
-    # ----------------------------------------------------------------
-    # TOP CONTROLS
-    # ----------------------------------------------------------------
     ctrl1, ctrl2, ctrl3, ctrl4, ctrl5 = st.columns([1, 1, 1, 1, 2])
 
     with ctrl1:
         n_agents = st.number_input("Number of agents", min_value=50, max_value=2000,
-                                   value=400, step=50, key="n_agents_rural")
+                                   value=400, step=50, key="n_agents_urban")
     with ctrl2:
         st.write("")
         st.write("")
-        if st.button("Generate Population", key="gen_btn"):
-            st.session_state.agents_df = generate_population(int(n_agents), PRESET)
-            st.session_state.selected_agent_id = None
-            st.session_state.inference_done = False
+        if st.button("Generate Population", key="u_gen_btn"):
+            st.session_state.u_agents_df = generate_population(int(n_agents), PRESET)
+            st.session_state.u_selected_agent_id = None
+            st.session_state.u_inference_done = False
             st.rerun()
 
     with ctrl3:
-        uploaded = st.file_uploader("Upload CSV", type=["csv"], key="csv_upload_rural",
+        uploaded = st.file_uploader("Upload CSV", type=["csv"], key="u_csv_upload",
                                     label_visibility="collapsed")
         if uploaded is not None:
             try:
-                st.session_state.agents_df = load_population_from_csv(uploaded, PRESET)
-                st.session_state.selected_agent_id = None
-                st.session_state.inference_done = False
-                st.success(f"Loaded {len(st.session_state.agents_df)} agents from CSV.")
+                st.session_state.u_agents_df = load_population_from_csv(uploaded, PRESET)
+                st.session_state.u_selected_agent_id = None
+                st.session_state.u_inference_done = False
+                st.success(f"Loaded {len(st.session_state.u_agents_df)} agents from CSV.")
             except ValueError as e:
                 st.error(str(e))
 
     with ctrl4:
         st.write("")
         st.write("")
-        run_disabled = st.session_state.agents_df is None
-        if st.button("Run Batch Inference", disabled=run_disabled, type="primary", key="run_btn"):
+        run_disabled = st.session_state.u_agents_df is None
+        if st.button("Run Batch Inference", disabled=run_disabled, type="primary", key="u_run_btn"):
             with st.spinner("Running inference on all agents..."):
-                probs = run_batch_inference(st.session_state.agents_df, PRESET)
-                st.session_state.agents_df["enrollment_prob"] = probs.values
-                st.session_state.inference_done = True
+                probs = run_batch_inference(st.session_state.u_agents_df, PRESET)
+                st.session_state.u_agents_df["enrollment_prob"] = probs.values
+                st.session_state.u_inference_done = True
             st.rerun()
 
     with ctrl5:
-        if st.session_state.agents_df is not None:
-            n = len(st.session_state.agents_df)
-            done = st.session_state.agents_df["enrollment_prob"].notna().sum()
+        if st.session_state.u_agents_df is not None:
+            n = len(st.session_state.u_agents_df)
+            done = st.session_state.u_agents_df["enrollment_prob"].notna().sum()
             if done > 0:
-                avg = st.session_state.agents_df["enrollment_prob"].mean()
+                avg = st.session_state.u_agents_df["enrollment_prob"].mean()
                 st.markdown(
                     f"<div style='padding-top:16px;color:#94a3b8;'>"
                     f"{n} agents &nbsp;|&nbsp; {done} inferred &nbsp;|&nbsp; "
@@ -420,68 +405,57 @@ def main():
                     unsafe_allow_html=True,
                 )
 
-    # ----------------------------------------------------------------
     # MAP
-    # ----------------------------------------------------------------
-    if st.session_state.agents_df is not None:
+    if st.session_state.u_agents_df is not None:
         fig = build_map(
-            st.session_state.agents_df,
-            st.session_state.school,
-            st.session_state.selected_agent_id,
+            st.session_state.u_agents_df,
+            st.session_state.u_school,
+            st.session_state.u_selected_agent_id,
         )
-        event = st.plotly_chart(fig, on_select="rerun", key="sim_map_rural", use_container_width=True)
+        event = st.plotly_chart(fig, on_select="rerun", key="sim_map_urban", use_container_width=True)
 
-        # Handle click — "agent" trace is index 1 (index 0 = school)
         if event and hasattr(event, "selection") and event.selection.points:
             pt = event.selection.points[0]
-            # point_index maps into the non-selected trace; find actual hh_id
             trace_idx = pt.get("curve_number", 1)
             point_idx = pt.get("point_index", 0)
-            agents_df = st.session_state.agents_df
+            agents_df = st.session_state.u_agents_df
 
             if trace_idx == 1 and len(agents_df) > point_idx:
-                # The non-selected scatter is sorted by agents_df order (excluding selected)
-                sel_id_now = st.session_state.selected_agent_id
+                sel_id_now = st.session_state.u_selected_agent_id
                 if sel_id_now is not None:
                     non_sel = agents_df[agents_df["hh_id"] != sel_id_now]
                 else:
                     non_sel = agents_df
                 if point_idx < len(non_sel):
                     clicked_hh_id = int(non_sel.iloc[point_idx]["hh_id"])
-                    if clicked_hh_id != st.session_state.selected_agent_id:
-                        st.session_state.selected_agent_id = clicked_hh_id
+                    if clicked_hh_id != st.session_state.u_selected_agent_id:
+                        st.session_state.u_selected_agent_id = clicked_hh_id
                         st.rerun()
     else:
         st.info("Generate or upload a population to see the simulation map.")
 
-    # ----------------------------------------------------------------
     # AGENT EDIT PANEL
-    # ----------------------------------------------------------------
     if (
-        st.session_state.selected_agent_id is not None
-        and st.session_state.agents_df is not None
+        st.session_state.u_selected_agent_id is not None
+        and st.session_state.u_agents_df is not None
     ):
         st.markdown('<div class="section-header">Edit Selected Agent</div>', unsafe_allow_html=True)
-        render_agent_panel(st.session_state.agents_df)
+        render_agent_panel(st.session_state.u_agents_df)
 
-        if st.button("Deselect Agent", key="deselect_btn"):
-            st.session_state.selected_agent_id = None
+        if st.button("Deselect Agent", key="u_deselect_btn"):
+            st.session_state.u_selected_agent_id = None
             st.rerun()
 
-    # ----------------------------------------------------------------
     # SUMMARY STATISTICS
-    # ----------------------------------------------------------------
     if (
-        st.session_state.agents_df is not None
-        and st.session_state.agents_df["enrollment_prob"].notna().any()
+        st.session_state.u_agents_df is not None
+        and st.session_state.u_agents_df["enrollment_prob"].notna().any()
     ):
         st.markdown('<div class="section-header">Population Summary</div>', unsafe_allow_html=True)
-        render_summary(st.session_state.agents_df)
+        render_summary(st.session_state.u_agents_df)
 
-    # ----------------------------------------------------------------
     # GLOBAL ADJUSTMENTS
-    # ----------------------------------------------------------------
-    if st.session_state.agents_df is not None:
+    if st.session_state.u_agents_df is not None:
         st.markdown('<div class="section-header">Global Parameter Adjustments</div>', unsafe_allow_html=True)
         with st.container():
             st.markdown('<div class="css-card">', unsafe_allow_html=True)
@@ -489,47 +463,45 @@ def main():
             with ga1:
                 income_shift = st.slider(
                     "Income shift for all agents (%)",
-                    -50, 50, 0, step=5, key="global_income",
+                    -50, 50, 0, step=5, key="u_global_income",
                     format="%d%%",
                 )
             with ga2:
-                force_safe = st.checkbox("Force all routes safe", key="global_safe")
+                force_safe = st.checkbox("Force all routes safe", key="u_global_safe")
             with ga3:
                 st.write("")
                 st.write("")
-                if st.button("Apply & Re-run All", key="global_apply"):
+                if st.button("Apply & Re-run All", key="u_global_apply"):
                     df_adj = apply_global_adjustment(
-                        st.session_state.agents_df,
+                        st.session_state.u_agents_df,
                         income_pct=income_shift / 100.0,
                         force_route_safe=force_safe,
                     )
                     with st.spinner("Re-running inference on adjusted population..."):
                         probs = run_batch_inference(df_adj, PRESET)
                         df_adj["enrollment_prob"] = probs.values
-                    st.session_state.agents_df = df_adj
-                    st.session_state.inference_done = True
+                    st.session_state.u_agents_df = df_adj
+                    st.session_state.u_inference_done = True
                     st.rerun()
             st.markdown('</div>', unsafe_allow_html=True)
 
-    # ----------------------------------------------------------------
     # DOWNLOAD
-    # ----------------------------------------------------------------
     if (
-        st.session_state.agents_df is not None
-        and st.session_state.agents_df["enrollment_prob"].notna().any()
+        st.session_state.u_agents_df is not None
+        and st.session_state.u_agents_df["enrollment_prob"].notna().any()
     ):
         export_cols = ["hh_id", "monthly_income_raw", "travel_mode", "route_safe",
                        "read_write", "solve_math", "school_facilities",
                        "distance_cat", "min_distance", "max_distance",
                        "min_time", "max_time", "enrollment_prob"]
-        export_df = st.session_state.agents_df[export_cols].copy()
+        export_df = st.session_state.u_agents_df[export_cols].copy()
         csv_bytes = export_df.to_csv(index=False).encode()
         st.download_button(
             "Download Results as CSV",
             data=csv_bytes,
-            file_name="rural_simulation_results.csv",
+            file_name="urban_simulation_results.csv",
             mime="text/csv",
-            key="download_btn",
+            key="u_download_btn",
         )
 
 

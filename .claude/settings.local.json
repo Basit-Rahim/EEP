@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m pip:*)",
+      "Bash(pip show:*)",
+      "Bash(py -3 -c:*)",
+      "Bash(conda env list:*)",
+      "Bash(py -3 -m pip list)",
+      "Bash(py -3 -m pip uninstall torch torchvision -y)",
+      "Bash(py -3 -m pip install:*)"
+    ]
+  }
+}
