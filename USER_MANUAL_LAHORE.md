@@ -32,7 +32,7 @@
 
 ## 1. Overview
 
-The **Lahore School Simulation** is a page within the EEP (Education Enrollment Prediction) Dashboard. It uses **Agent-Based Modeling (ABM)** to simulate the school enrollment decisions of households in Lahore, Pakistan.
+The **Lahore School Simulation** is a page within the EEP (Equity equation project) Dashboard. It uses **Agent-Based Modeling (ABM)** to simulate the school enrollment decisions of households in Lahore, Pakistan.
 
 Unlike a statistical model that aggregates populations, ABM treats each household as an independent **agent** that makes its own enrollment decision based on its own characteristics — income, distance to school, route safety, parental literacy, and available transport. This allows the simulation to capture spatial inequality: two households in different neighborhoods of Lahore, even with similar income, may have very different enrollment probabilities simply because the road distance to their nearest school differs.
 
@@ -71,7 +71,7 @@ d = 2R × arctan2(√a, √(1−a))
 Where R = 6,371 km (Earth's radius), lat and lon are in radians.
 
 In this simulation, Haversine is used in two places:
-1. **Instant nearest-school assignment** — for all 10,000 households against all ~3,000 schools simultaneously, using vectorized NumPy operations (no Python loops). This finds which school is geographically closest to each household.
+1. **Instant nearest-school assignment** — for all 10,000 households against all ~3,000 schools simultaneously, using vectorized NumPy operations. This finds which school is geographically closest to each household.
 2. **Fallback distance** — if the road routing API is unavailable, the Haversine distance is used instead.
 
 Haversine gives the **shortest possible distance** (as the crow flies). Actual road distances are always longer.
@@ -80,11 +80,10 @@ Haversine gives the **shortest possible distance** (as the crow flies). Actual r
 
 The **Open Source Routing Machine (OSRM)** is a free, open-source routing engine based on OpenStreetMap data. It computes realistic driving distances and travel times along actual roads — accounting for road network topology, one-way streets, and permitted routes.
 
-The simulation uses the **OSRM Table API**, which accepts a batch of source and destination coordinates in a single HTTP request and returns a complete matrix of distances and travel times. This is far more efficient than calling the routing API once per household.
+The simulation uses the **OSRM Table API**, which accepts a batch of source and destination coordinates in a single HTTP request and returns a complete matrix of distances and travel times.
 
 For 10,000 households, the simulation sends approximately 100 requests (100 households per request), receiving a distance matrix per batch. This reduces the total API calls from 10,000 down to ~100, cutting processing time from hours to under one minute.
 
-**Why road distance matters:** A household 1.5 km straight-line from a school might be 3.8 km by road if there is no direct path. In dense urban areas like Lahore, the ratio of road distance to straight-line distance (called the **circuity factor**) is typically 1.2 to 1.6. This directly affects whether a household falls into the "Near," "Moderate," or "Far" distance category — and therefore its enrollment probability.
 
 ### 2.4 Distance Categories
 
@@ -97,7 +96,7 @@ Road distances are grouped into four categories that the enrollment model was tr
 | Far | 6–15 km | 50–90 minutes |
 | Very Far | 15+ km | 100–180 minutes |
 
-Research consistently shows that distance is one of the strongest determinants of school enrollment in Pakistan, particularly for girls. Households in the "Near" category have significantly higher enrollment probabilities than those in "Far" or "Very Far."
+
 
 ### 2.5 Income and PSLM Quintiles
 
@@ -125,13 +124,12 @@ In addition to income and distance, each agent is assigned the following attribu
 
 | Feature | Distribution | Interpretation |
 |---|---|---|
-| Travel mode | Multinomial: 25% foot, 20% bicycle, 25% motorcycle, 15% van/rickshaw, 15% public transport | How the child would travel to school |
 | Route safety | Binomial (p=0.78) | Whether the route to school is considered safe (1=safe, 0=unsafe) |
 | Head can read/write | Binomial (p=0.62) | Whether the household head is literate |
 | Head can solve math | Binomial (p=0.54) | Whether the household head has basic numeracy |
 | School facilities score | Beta(2,3) × 5 | Score 0–5 reflecting quality of facilities at the nearest school |
 
-Route safety has a direct penalty: if a route is unsafe (value = 0), the predicted enrollment probability is multiplied by 0.80, reducing it by 20%.
+
 
 ### 2.7 The Enrollment Inference Model (Three-Phase Pipeline)
 
@@ -166,8 +164,8 @@ The full pipeline:
        ▼
   Enrollment Probability [0.0 – 1.0]
        │
-       ▼ Route safety penalty if route_safe = 0
-  Final Probability × 0.80
+       ▼
+  Final Probability
 ```
 
 A probability above **0.50** means the model predicts the household is more likely than not to enroll their child. This threshold is used in the dashboard's summary metrics.
@@ -202,7 +200,7 @@ build_lahore_map()        Plotly Scattermapbox on OpenStreetMap tiles
 
 ---
 
-## 4. Getting Started
+## 4. Getting Started (Running locally)
 
 ### Requirements
 
@@ -297,7 +295,7 @@ This step runs the trained enrollment probability model on all 10,000 households
 
 2. **`run_batch_inference()`** runs the full three-phase pipeline (Phase 1 neural nets → Autoencoder → Phase 2 classifier) on all 10,000 households simultaneously using vectorized operations.
 
-3. Route safety penalty is applied: households with `route_safe = 0` have their probability multiplied by 0.80.
+3. Route safety penalty is applied: households with `route_safe = 0` have their probability.
 
 **Typical duration:** 5–15 seconds.
 
@@ -529,7 +527,7 @@ Some schools in `POIs_Schools.csv` may have coordinates near the edges of Lahore
 
 **Q: Can I change the number of households?**
 
-Currently 10,000 is hardcoded. A developer can change `n=10_000` in the call to `generate_households()` in `pages/Lahore_Simulation.py` line 94.
+Currently 10,000 is hardcoded. 
 
 **Q: What does a probability of exactly 50% mean?**
 
