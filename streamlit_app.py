@@ -47,6 +47,8 @@ def _init_state():
         st.session_state.selected_agent_id = None
     if "inference_done" not in st.session_state:
         st.session_state.inference_done = False
+    if "pslm_mode" not in st.session_state:
+        st.session_state.pslm_mode = False
 
 
 # -----------------------------------------------------------------------
@@ -85,13 +87,16 @@ def build_map(agents_df: pd.DataFrame, school: dict, selected_id) -> go.Figure:
 
     def hover_text(row):
         prob_str = f"{row.enrollment_prob:.0%}" if pd.notna(row.enrollment_prob) else "—"
-        return (
-            f"<b>Agent #{int(row.hh_id)}</b><br>"
-            f"Income: {row.monthly_income_raw:,.0f} PKR<br>"
-            f"Distance: {row.distance_cat}<br>"
-            f"Route: {'Safe' if row.route_safe == 1 else 'Unsafe'}<br>"
-            f"Enrollment Prob: {prob_str}"
-        )
+        lines = [
+            f"<b>Agent #{int(row.hh_id)}</b>",
+            f"Income: {row.monthly_income_raw:,.0f} PKR",
+            f"Distance: {row.distance_cat}",
+            f"Route: {'Safe' if row.route_safe == 1 else 'Unsafe'}",
+            f"Model Predicted: {prob_str}",
+        ]
+        if "actual_enrollment_prob" in row.index and pd.notna(row.actual_enrollment_prob):
+            lines.append(f"Actual (PSLM): <b>{row.actual_enrollment_prob:.0%}</b>")
+        return "<br>".join(lines)
 
     hover_texts = agents_df.apply(hover_text, axis=1).tolist()
 
@@ -365,7 +370,7 @@ def main():
     # ----------------------------------------------------------------
     # TOP CONTROLS
     # ----------------------------------------------------------------
-    ctrl1, ctrl2, ctrl3, ctrl4, ctrl5 = st.columns([1, 1, 1, 1, 2])
+    ctrl1, ctrl2, ctrl3, ctrl4, ctrl5, ctrl6 = st.columns([1, 1, 1, 1, 1, 2])
 
     with ctrl1:
         n_agents = st.number_input("Number of agents", min_value=50, max_value=2000,
@@ -377,9 +382,26 @@ def main():
             st.session_state.agents_df = generate_population(int(n_agents), PRESET)
             st.session_state.selected_agent_id = None
             st.session_state.inference_done = False
+            st.session_state.pslm_mode = False
             st.rerun()
 
     with ctrl3:
+        st.write("")
+        st.write("")
+        if st.button("Validate with PSLM", key="pslm_btn", type="secondary"):
+            from pslm_lahore import load_pslm_households
+            with st.spinner("Loading PSLM Lahore households …"):
+                pslm_df = load_pslm_households()
+            with st.spinner(f"Running inference on {len(pslm_df):,} households …"):
+                probs = run_batch_inference(pslm_df, preset="urban")
+                pslm_df["enrollment_prob"] = probs.values
+            st.session_state.agents_df = pslm_df
+            st.session_state.selected_agent_id = None
+            st.session_state.inference_done = True
+            st.session_state.pslm_mode = True
+            st.rerun()
+
+    with ctrl4:
         uploaded = st.file_uploader("Upload CSV", type=["csv"], key="csv_upload_rural",
                                     label_visibility="collapsed")
         if uploaded is not None:
@@ -387,11 +409,12 @@ def main():
                 st.session_state.agents_df = load_population_from_csv(uploaded, PRESET)
                 st.session_state.selected_agent_id = None
                 st.session_state.inference_done = False
+                st.session_state.pslm_mode = False
                 st.success(f"Loaded {len(st.session_state.agents_df)} agents from CSV.")
             except ValueError as e:
                 st.error(str(e))
 
-    with ctrl4:
+    with ctrl5:
         st.write("")
         st.write("")
         run_disabled = st.session_state.agents_df is None
@@ -402,7 +425,7 @@ def main():
                 st.session_state.inference_done = True
             st.rerun()
 
-    with ctrl5:
+    with ctrl6:
         if st.session_state.agents_df is not None:
             n = len(st.session_state.agents_df)
             done = st.session_state.agents_df["enrollment_prob"].notna().sum()
@@ -475,7 +498,20 @@ def main():
         st.session_state.agents_df is not None
         and st.session_state.agents_df["enrollment_prob"].notna().any()
     ):
-        st.markdown('<div class="section-header">Population Summary</div>', unsafe_allow_html=True)
+        if st.session_state.get("pslm_mode") and "actual_enrollment_prob" in st.session_state.agents_df.columns:
+            st.markdown('<div class="section-header">PSLM Validation Summary</div>', unsafe_allow_html=True)
+            df_v = st.session_state.agents_df
+            actual_rate = df_v["actual_enrollment_prob"].mean()
+            model_rate  = df_v["enrollment_prob"].mean()
+            diff = model_rate - actual_rate
+            vm1, vm2, vm3, vm4 = st.columns(4)
+            vm1.metric("Actual Enrollment Rate", f"{actual_rate:.1%}")
+            vm2.metric("Model Predicted Rate",   f"{model_rate:.1%}")
+            vm3.metric("Difference (Model − Actual)", f"{diff:+.1%}")
+            vm4.metric("N Households (PSLM)",    f"{len(df_v):,}")
+            st.caption("Route safety forced to 1. School facilities randomly assigned. Geo coordinates random within Lahore.")
+        else:
+            st.markdown('<div class="section-header">Population Summary</div>', unsafe_allow_html=True)
         render_summary(st.session_state.agents_df)
 
     # ----------------------------------------------------------------

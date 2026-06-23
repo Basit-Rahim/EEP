@@ -309,7 +309,9 @@ def build_lahore_map(
             if "distance_cat" in row.index and pd.notna(row.distance_cat):
                 lines.append(f"Category: {row.distance_cat}")
             if "enrollment_prob" in row.index and pd.notna(row.enrollment_prob):
-                lines.append(f"Enrollment prob: <b>{row.enrollment_prob:.0%}</b>")
+                lines.append(f"Model predicted: <b>{row.enrollment_prob:.0%}</b>")
+            if "actual_enrollment_prob" in row.index and pd.notna(row.actual_enrollment_prob):
+                lines.append(f"Actual (PSLM): <b>{row.actual_enrollment_prob:.0%}</b>")
             return "<br>".join(lines) + "<extra></extra>"
 
         hover_hh = households_df.apply(_hh_hover, axis=1).tolist()
