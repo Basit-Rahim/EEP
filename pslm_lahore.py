@@ -111,25 +111,14 @@ def load_pslm_households(seed: int = 42) -> pd.DataFrame:
     hh["monthly_income_raw"] = income_arr
     hh["monthly_income_norm"] = ((income_arr - stats["mean"]) / stats["std"]).round(4)
 
-    # Distance category bounds from min/max km across children
-    min_km = hh["min_dist_km"].fillna(0.5).values
-    max_km = hh["max_dist_km"].fillna(1.5).values
-
-    dist_cats, min_dists, max_dists, min_times, max_times = [], [], [], [], []
-    for lo, hi in zip(min_km, max_km):
-        _, mn_d, _, mn_t, _ = _road_km_to_dist_cat(float(lo))
-        label, _, mx_d, _, mx_t = _road_km_to_dist_cat(float(hi))
-        dist_cats.append(label)
-        min_dists.append(mn_d)
-        max_dists.append(mx_d)
-        min_times.append(mn_t)
-        max_times.append(mx_t)
-
-    hh["distance_cat"] = dist_cats
-    hh["min_distance"] = min_dists
-    hh["max_distance"] = max_dists
-    hh["min_time"] = min_times
-    hh["max_time"] = max_times
+    # Distance: force all households to 0–1 km (geo is randomly assigned anyway).
+    # Both min and max are drawn from Uniform(0, 1) so every household falls in "Near".
+    rand_km = np.round(rng.uniform(0.0, 1.0, n), 3)
+    hh["distance_cat"] = "Near (0–2 km)"
+    hh["min_distance"] = 0.5
+    hh["max_distance"] = rand_km          # actual random value within 0-1 km
+    hh["min_time"]     = 5.0
+    hh["max_time"]     = 15.0
 
     # route_safe: forced to 1 for all
     hh["route_safe"] = 1
