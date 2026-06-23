@@ -95,26 +95,21 @@ def load_pslm_households(seed: int = 42) -> pd.DataFrame:
     # solve_math: head completed primary (edu_level_num >= 4)
     hh["solve_math"] = (edu >= 4).astype(int)
 
-    # Income: annual → monthly; impute missing by education-stratified quintile
-    hh["monthly_income_raw"] = (
-        pd.to_numeric(hh["total_household_income"], errors="coerce") / 12.0
-    )
-    missing = hh["monthly_income_raw"].isna()
-    if missing.any():
-        q_idx = (
-            pd.cut(edu[missing], bins=[-1, 0, 2, 5, 9, 99], labels=[0, 1, 2, 3, 4])
-            .astype(float).fillna(2).astype(int)
-        )
-        hh.loc[missing, "monthly_income_raw"] = np.array([
-            rng.uniform(PSLM_QUINTILES[min(qi, 4)][1], PSLM_QUINTILES[min(qi, 4)][2])
+    # Income: annual → monthly; impute missing by education-stratified quintile.
+    # Work entirely in numpy to avoid pandas 2.x dtype-coercion errors on .loc assignment.
+    edu_arr = edu.values
+    income_arr = pd.to_numeric(hh["total_household_income"], errors="coerce").values / 12.0
+    missing_mask = np.isnan(income_arr)
+    if missing_mask.any():
+        # Map edu level to quintile bucket 0-4 using digitize
+        q_idx = np.digitize(edu_arr[missing_mask], bins=[0, 2, 5, 9]).clip(0, 4)
+        income_arr[missing_mask] = np.array([
+            rng.uniform(PSLM_QUINTILES[int(qi)][1], PSLM_QUINTILES[int(qi)][2])
             for qi in q_idx
         ])
-    hh["monthly_income_raw"] = np.round(
-        np.clip(hh["monthly_income_raw"], stats["raw_min"], stats["raw_max"]), 0
-    )
-    hh["monthly_income_norm"] = (
-        (hh["monthly_income_raw"] - stats["mean"]) / stats["std"]
-    ).round(4)
+    income_arr = np.round(np.clip(income_arr, stats["raw_min"], stats["raw_max"]), 0)
+    hh["monthly_income_raw"] = income_arr
+    hh["monthly_income_norm"] = ((income_arr - stats["mean"]) / stats["std"]).round(4)
 
     # Distance category bounds from min/max km across children
     min_km = hh["min_dist_km"].fillna(0.5).values
