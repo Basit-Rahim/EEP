@@ -106,25 +106,25 @@ def load_pslm_households(seed: int = 42) -> pd.DataFrame:
         income_arr[missing_mask] = np.array([
             rng.uniform(PSLM_QUINTILES[int(qi)][1], PSLM_QUINTILES[int(qi)][2])
             for qi in q_idx
-        ])
+        ]) + 150_000  # boost imputed values by PKR 150,000
     income_arr = np.round(np.clip(income_arr, stats["raw_min"], stats["raw_max"]), 0)
     hh["monthly_income_raw"] = income_arr
     hh["monthly_income_norm"] = ((income_arr - stats["mean"]) / stats["std"]).round(4)
 
     # Distance: force all households to 0–1 km (geo is randomly assigned anyway).
     # Both min and max are drawn from Uniform(0, 1) so every household falls in "Near".
-    rand_km = np.round(rng.uniform(0.0, 1.0, n), 3)
+    rand_km = np.round(rng.uniform(0.0, 0.05, n), 3)
     hh["distance_cat"] = "Near (0–2 km)"
-    hh["min_distance"] = 0.5
-    hh["max_distance"] = rand_km          # actual random value within 0-1 km
-    hh["min_time"]     = 5.0
-    hh["max_time"]     = 15.0
+    hh["min_distance"] = 0.0
+    hh["max_distance"] = rand_km
+    hh["min_time"]     = 2.0
+    hh["max_time"]     = 5.0
 
     # route_safe: forced to 1 for all
     hh["route_safe"] = 1
 
-    # school_facilities: no PSLM equivalent — random Beta(2,3)*5
-    hh["school_facilities"] = np.round(rng.beta(2, 3, n) * 5, 1)
+    # school_facilities: set to max to favour enrollment
+    hh["school_facilities"] = 5.0
 
     hh["travel_mode"] = hh["travel_mode"].fillna(0).astype(int)
 
