@@ -3,6 +3,7 @@ Lahore School Simulation — all ~3000 schools, 10k households, real map, OSRM r
 """
 import math
 
+import numpy as np
 import plotly.graph_objects as go
 import pandas as pd
 import streamlit as st
@@ -355,6 +356,186 @@ if st.session_state.lhr_schools is not None:
                             yaxis=dict(tickformat=".0%", range=[0, 1.1], color="#0f172a"),
                         )
                         st.plotly_chart(fig_q, use_container_width=True)
+
+        # -----------------------------------------------------------------------
+        # PSLM Model Evaluation (ROC, Threshold Analysis, Confusion Matrix)
+        # -----------------------------------------------------------------------
+        if is_pslm and has_probs and "actual_enrollment_prob" in hh_df.columns:
+            st.markdown('<div class="section-header">Model Evaluation — PSLM Validation</div>', unsafe_allow_html=True)
+            st.caption("Binary ground truth: household is 'enrolled' if ≥50% of its children are in school (actual_enrollment_prob ≥ 0.5).")
+
+            y_true = (hh_df["actual_enrollment_prob"] >= 0.5).astype(int).values
+            y_score = hh_df["enrollment_prob"].values
+            n_pos = y_true.sum()
+            n_neg = len(y_true) - n_pos
+
+            # --- ROC curve ---
+            thresholds_roc = np.linspace(0.0, 1.0, 200)
+            tprs, fprs = [], []
+            for t in thresholds_roc:
+                pred = (y_score >= t).astype(int)
+                tp = ((pred == 1) & (y_true == 1)).sum()
+                fp = ((pred == 1) & (y_true == 0)).sum()
+                tpr = tp / n_pos if n_pos > 0 else 0
+                fpr = fp / n_neg if n_neg > 0 else 0
+                tprs.append(tpr)
+                fprs.append(fpr)
+
+            # AUC via trapezoidal rule on sorted FPR
+            sorted_pairs = sorted(zip(fprs, tprs))
+            s_fprs = [p[0] for p in sorted_pairs]
+            s_tprs = [p[1] for p in sorted_pairs]
+            auc = float(np.trapz(s_tprs, s_fprs))
+
+            # --- Threshold sensitivity table ---
+            eval_thresholds = [0.30, 0.40, 0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80]
+            rows = []
+            for t in eval_thresholds:
+                pred = (y_score >= t).astype(int)
+                tp = int(((pred == 1) & (y_true == 1)).sum())
+                fp = int(((pred == 1) & (y_true == 0)).sum())
+                tn = int(((pred == 0) & (y_true == 0)).sum())
+                fn = int(((pred == 0) & (y_true == 1)).sum())
+                precision = tp / (tp + fp) if (tp + fp) > 0 else 0
+                recall    = tp / (tp + fn) if (tp + fn) > 0 else 0
+                f1        = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0
+                accuracy  = (tp + tn) / len(y_true)
+                rows.append({"threshold": t, "tp": tp, "fp": fp, "tn": tn, "fn": fn,
+                             "precision": precision, "recall": recall, "f1": f1, "accuracy": accuracy})
+            eval_df = pd.DataFrame(rows)
+
+            # Row 1: ROC + Threshold line chart
+            re1, re2 = st.columns(2)
+
+            with re1:
+                fig_roc = go.Figure()
+                fig_roc.add_trace(go.Scatter(
+                    x=s_fprs, y=s_tprs, mode="lines",
+                    line=dict(color="#3b82f6", width=2.5),
+                    name=f"ROC (AUC = {auc:.3f})",
+                    hovertemplate="FPR: %{x:.2f}<br>TPR: %{y:.2f}<extra></extra>",
+                ))
+                fig_roc.add_trace(go.Scatter(
+                    x=[0, 1], y=[0, 1], mode="lines",
+                    line=dict(color="#94a3b8", width=1, dash="dash"),
+                    name="Random", showlegend=True,
+                ))
+                fig_roc.update_layout(
+                    height=300, margin=dict(l=10, r=10, t=40, b=10),
+                    paper_bgcolor="#ffffff", plot_bgcolor="#f8fafc",
+                    title=dict(text=f"ROC Curve  (AUC = {auc:.3f})", font=dict(size=13, color="#0f172a"), x=0.5),
+                    xaxis=dict(title="False Positive Rate", color="#0f172a", range=[0, 1]),
+                    yaxis=dict(title="True Positive Rate",  color="#0f172a", range=[0, 1]),
+                    legend=dict(font=dict(color="#0f172a"), bgcolor="rgba(0,0,0,0)"),
+                )
+                st.plotly_chart(fig_roc, use_container_width=True)
+
+            with re2:
+                fig_thr = go.Figure()
+                thr_labels = [f"{int(t*100)}%" for t in eval_df["threshold"]]
+                fig_thr.add_trace(go.Scatter(
+                    x=thr_labels, y=eval_df["precision"], mode="lines+markers",
+                    name="Precision", line=dict(color="#3b82f6", width=2),
+                    marker=dict(size=7),
+                ))
+                fig_thr.add_trace(go.Scatter(
+                    x=thr_labels, y=eval_df["recall"], mode="lines+markers",
+                    name="Recall", line=dict(color="#f59e0b", width=2),
+                    marker=dict(size=7),
+                ))
+                fig_thr.add_trace(go.Scatter(
+                    x=thr_labels, y=eval_df["f1"], mode="lines+markers",
+                    name="F1 Score", line=dict(color="#22c55e", width=2),
+                    marker=dict(size=7),
+                ))
+                fig_thr.add_trace(go.Scatter(
+                    x=thr_labels, y=eval_df["accuracy"], mode="lines+markers",
+                    name="Accuracy", line=dict(color="#a855f7", width=2, dash="dot"),
+                    marker=dict(size=7),
+                ))
+                fig_thr.update_layout(
+                    height=300, margin=dict(l=10, r=10, t=40, b=10),
+                    paper_bgcolor="#ffffff", plot_bgcolor="#f8fafc",
+                    title=dict(text="Precision / Recall / F1 by Threshold", font=dict(size=13, color="#0f172a"), x=0.5),
+                    xaxis=dict(title="Threshold", color="#0f172a"),
+                    yaxis=dict(title="Score", color="#0f172a", range=[0, 1.05]),
+                    legend=dict(font=dict(color="#0f172a"), bgcolor="rgba(0,0,0,0)", orientation="h", y=-0.25),
+                )
+                st.plotly_chart(fig_thr, use_container_width=True)
+
+            # Row 2: Correct predictions bar + Confusion matrix
+            re3, re4 = st.columns(2)
+
+            with re3:
+                fig_correct = go.Figure()
+                fig_correct.add_trace(go.Bar(
+                    x=thr_labels,
+                    y=eval_df["tp"] + eval_df["tn"],
+                    name="Correct", marker_color="#22c55e",
+                    text=(eval_df["tp"] + eval_df["tn"]).astype(str),
+                    textposition="outside",
+                ))
+                fig_correct.add_trace(go.Bar(
+                    x=thr_labels,
+                    y=eval_df["fp"] + eval_df["fn"],
+                    name="Incorrect", marker_color="#ef4444",
+                    text=(eval_df["fp"] + eval_df["fn"]).astype(str),
+                    textposition="outside",
+                ))
+                fig_correct.update_layout(
+                    barmode="stack",
+                    height=300, margin=dict(l=10, r=10, t=40, b=10),
+                    paper_bgcolor="#ffffff", plot_bgcolor="#f8fafc",
+                    title=dict(text="Correct vs Incorrect Households by Threshold", font=dict(size=13, color="#0f172a"), x=0.5),
+                    xaxis=dict(title="Threshold", color="#0f172a"),
+                    yaxis=dict(title="# Households", color="#0f172a"),
+                    legend=dict(font=dict(color="#0f172a"), bgcolor="rgba(0,0,0,0)"),
+                )
+                st.plotly_chart(fig_correct, use_container_width=True)
+
+            with re4:
+                # Confusion matrix at threshold 0.50
+                row50 = eval_df[eval_df["threshold"] == 0.50].iloc[0]
+                tp50, fp50, tn50, fn50 = int(row50.tp), int(row50.fp), int(row50.tn), int(row50.fn)
+                cm_z    = [[tn50, fp50], [fn50, tp50]]
+                cm_text = [
+                    [f"<b>{tn50:,}</b><br>True Negative<br>Model: No  | Actual: No",
+                     f"<b>{fp50:,}</b><br>False Positive<br>Model: Yes | Actual: No"],
+                    [f"<b>{fn50:,}</b><br>False Negative<br>Model: No  | Actual: Yes",
+                     f"<b>{tp50:,}</b><br>True Positive<br>Model: Yes | Actual: Yes"],
+                ]
+                fig_cm = go.Figure(go.Heatmap(
+                    z=cm_z,
+                    text=cm_text,
+                    texttemplate="%{text}",
+                    colorscale=[[0, "#fef2f2"], [0.5, "#bfdbfe"], [1, "#1d4ed8"]],
+                    showscale=False,
+                    hoverinfo="text",
+                ))
+                fig_cm.update_layout(
+                    height=300, margin=dict(l=10, r=10, t=40, b=40),
+                    paper_bgcolor="#ffffff", plot_bgcolor="#f8fafc",
+                    title=dict(text="Confusion Matrix  (threshold = 50%)", font=dict(size=13, color="#0f172a"), x=0.5),
+                    xaxis=dict(tickvals=[0, 1], ticktext=["Predicted: No", "Predicted: Yes"], color="#0f172a"),
+                    yaxis=dict(tickvals=[0, 1], ticktext=["Actual: No", "Actual: Yes"], color="#0f172a"),
+                )
+                st.plotly_chart(fig_cm, use_container_width=True)
+
+            # Summary stats table
+            st.markdown("**Metrics by Threshold**")
+            display_eval = eval_df.copy()
+            display_eval["threshold"] = display_eval["threshold"].map(lambda v: f"{v:.0%}")
+            display_eval["precision"] = display_eval["precision"].map(lambda v: f"{v:.1%}")
+            display_eval["recall"]    = display_eval["recall"].map(lambda v: f"{v:.1%}")
+            display_eval["f1"]        = display_eval["f1"].map(lambda v: f"{v:.3f}")
+            display_eval["accuracy"]  = display_eval["accuracy"].map(lambda v: f"{v:.1%}")
+            display_eval = display_eval.rename(columns={
+                "threshold": "Threshold", "tp": "TP", "fp": "FP",
+                "tn": "TN", "fn": "FN",
+                "precision": "Precision", "recall": "Recall",
+                "f1": "F1", "accuracy": "Accuracy",
+            })
+            st.dataframe(display_eval, use_container_width=True, hide_index=True)
 
         # Download
         csv_bytes = hh_df.to_csv(index=False).encode()
