@@ -385,7 +385,7 @@ if st.session_state.lhr_schools is not None:
             sorted_pairs = sorted(zip(fprs, tprs))
             s_fprs = [p[0] for p in sorted_pairs]
             s_tprs = [p[1] for p in sorted_pairs]
-            auc = float(np.trapz(s_tprs, s_fprs))
+            auc = float(np.trapezoid(s_tprs, s_fprs))
 
             # --- Threshold sensitivity table ---
             eval_thresholds = [0.30, 0.40, 0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80]
