@@ -494,8 +494,11 @@ if st.session_state.lhr_schools is not None:
                 st.plotly_chart(fig_correct, use_container_width=True)
 
             with re4:
-                # Confusion matrix at threshold 0.50
-                row50 = eval_df[eval_df["threshold"] == 0.50].iloc[0]
+                # Confusion matrix at the threshold closest to the model's mean predicted score
+                mean_score = float(np.mean(y_score))
+                best_row = eval_df.iloc[(eval_df["threshold"] - mean_score).abs().argmin()]
+                cm_thr_label = f"{best_row['threshold']:.0%}"
+                row50 = best_row
                 tp50, fp50, tn50, fn50 = int(row50.tp), int(row50.fp), int(row50.tn), int(row50.fn)
                 cm_z    = [[tn50, fp50], [fn50, tp50]]
                 cm_text = [
@@ -515,7 +518,7 @@ if st.session_state.lhr_schools is not None:
                 fig_cm.update_layout(
                     height=300, margin=dict(l=10, r=10, t=40, b=40),
                     paper_bgcolor="#ffffff", plot_bgcolor="#f8fafc",
-                    title=dict(text="Confusion Matrix  (threshold = 50%)", font=dict(size=13, color="#0f172a"), x=0.5),
+                    title=dict(text=f"Confusion Matrix  (threshold = {cm_thr_label})", font=dict(size=13, color="#0f172a"), x=0.5),
                     xaxis=dict(tickvals=[0, 1], ticktext=["Predicted: No", "Predicted: Yes"], color="#0f172a"),
                     yaxis=dict(tickvals=[0, 1], ticktext=["Actual: No", "Actual: Yes"], color="#0f172a"),
                 )
